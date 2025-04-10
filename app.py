@@ -34,11 +34,8 @@ def main():
         process_btn = st.button("🚀 Start Analysis", use_container_width=True)
 
     if process_btn:
-        if not reference_file:
-            st.error("❌ Please upload a reference FASTA file.")
-            return
-        if not fastq_files:
-            st.error("❌ Please upload at least one FASTQ file.")
+        if not reference_file or not fastq_files:
+            st.error("❌ Please upload both reference and FASTQ files.")
             return
 
         try:
@@ -71,8 +68,8 @@ def main():
         st.download_button(
             label="📥 Download Full Excel Report",
             data=st.session_state.output_data,
-            file_name="final_coverage_report.xls",
-            mime="application/vnd.ms-excel",
+            file_name="final_coverage_report.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
 
@@ -91,7 +88,7 @@ def process_all_reads_with_progress(reference_file, fastq_files):
 
         output_dir = os.path.join(tmpdir, "results")
         os.makedirs(output_dir, exist_ok=True)
-        final_output = os.path.join(output_dir, "final_coverage_report.xls")
+        final_output = os.path.join(output_dir, "final_coverage_report.xlsx")
 
         barcode_files = [f for f in os.listdir(reads_dir) if f.endswith((".fastq", ".fastq.gz"))]
 
