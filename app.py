@@ -208,6 +208,7 @@ def merge_coverage_matrix(output_dir, final_output):
                     f'numreads_{barcode}': row['numreads']
                 }
             else:
+                # Prefer non-_R rname if available
                 if not row['#rname'].endswith('_R'):
                     combined_entries[key]['#rname'] = row['#rname']
                 combined_entries[key][f'numreads_{barcode}'] = row['numreads']
