@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 
 logging.basicConfig(level=logging.INFO)
-st.set_page_config(page_title="Nanopore Amplicon Coverage Analyzer", layout="wide")
+st.set_page_config(page_title="Amplicon Coverage Analyzer", layout="wide")
 
 # Style
 st.markdown("""
@@ -21,7 +21,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def main():
-    st.markdown("<h1>Amplicon Coverage Analyzer</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>Nanopore Amplicon Coverage Analyzer</h1>", unsafe_allow_html=True)
     st.markdown("<h4>Upload FASTQ files and a reference FASTA to compute amplicon coverage.</h4>", unsafe_allow_html=True)
 
     # Acknowledgment at the top
