@@ -1,0 +1,13 @@
+# System packages for alignment and coverage tools
+samtools
+minimap2
+
+# Dependencies for working with compressed files and system utilities
+wget
+bzip2
+build-essential
+zlib1g-dev
+libbz2-dev
+liblzma-dev
+libcurl4-openssl-dev
+
