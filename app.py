@@ -5,7 +5,6 @@ import pandas as pd
 import tempfile
 import logging
 import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.express as px
 
 logging.basicConfig(level=logging.INFO)
@@ -82,6 +81,7 @@ def main():
         else:
             st.warning("⚠️ No data above selected threshold.")
 
+        # Bar plot
         st.subheader("📈 Total Coverage per Amplicon")
         melted = df.melt(id_vars=["#rname"], 
                          value_vars=[col for col in df.columns if col.startswith("numreads_")],
@@ -89,13 +89,6 @@ def main():
         melted["Barcode"] = melted["Barcode"].str.replace("numreads_", "")
         fig = px.bar(melted, x="#rname", y="Read Count", color="Barcode", barmode="group")
         st.plotly_chart(fig, use_container_width=True)
-
-        st.subheader("🧯 Heatmap of Amplicon Coverage")
-        heatmap_data = df.set_index("#rname")
-        heatmap_data = heatmap_data[[col for col in heatmap_data.columns if col.startswith("numreads_")]]
-        fig2, ax = plt.subplots(figsize=(10, len(heatmap_data) * 0.4))
-        sns.heatmap(heatmap_data, annot=True, fmt="g", cmap="YlGnBu", ax=ax)
-        st.pyplot(fig2)
 
         st.download_button("📥 Download Full Excel Report", st.session_state.output_data,
                            file_name="final_coverage_report.xlsx",
