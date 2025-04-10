@@ -4,8 +4,13 @@ import subprocess
 import pandas as pd
 import tempfile
 import logging
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
 
 logging.basicConfig(level=logging.INFO)
+
+st.set_page_config(page_title="Amplicon Coverage Analyzer", layout="wide")
 
 st.markdown("""
 <style>
@@ -38,18 +43,6 @@ def main():
             st.error("❌ Please upload both reference and FASTQ files.")
             return
 
-        try:
-            if not reference_file.name.lower().endswith((".fasta", ".fa")):
-                st.error("❌ Reference file must be .fasta or .fa")
-                return
-            for fq in fastq_files:
-                if not fq.name.lower().endswith((".fastq", ".fastq.gz", ".gz")):
-                    st.error(f"❌ Invalid FASTQ file: {fq.name}")
-                    return
-        except AttributeError:
-            st.error("❌ File metadata error. Please re-upload files.")
-            st.stop()
-
         with st.spinner("🔬 Processing files..."):
             try:
                 output_data, df = process_all_reads_with_progress(reference_file, fastq_files)
@@ -61,35 +54,38 @@ def main():
                 logging.error(f"Unexpected error: {str(e)}")
 
     if st.session_state.processed:
-        st.markdown("""
-        <div style="background-color:#d4edda;padding:10px;border-left:5px solid #28a745;border-radius:5px;">
-            <span style="color:black;font-weight:600;">✅ Analysis completed!</span>
-        </div>
-        """, unsafe_allow_html=True)
+        df = st.session_state.dataframe
+        st.markdown("<h3>📊 Coverage Summary Table</h3>", unsafe_allow_html=True)
 
-        st.subheader("📊 Coverage Summary Table")
-        st.dataframe(st.session_state.dataframe.head(20), use_container_width=True)
+        threshold = st.slider("Minimum Read Count to Display", 0, 50000, 0, step=1000)
+        filtered_df = df.copy()
+        for col in filtered_df.columns:
+            if col.startswith('numreads_'):
+                filtered_df = filtered_df[filtered_df[col] >= threshold]
 
-        st.download_button(
-            label="📥 Download Full Excel Report",
-            data=st.session_state.output_data,
-            file_name="final_coverage_report.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+        if not filtered_df.empty:
+            st.dataframe(filtered_df, use_container_width=True)
+        else:
+            st.warning("⚠️ No data above selected threshold.")
 
-    st.markdown("""<hr style="border: 1px solid black;">""", unsafe_allow_html=True)
-    st.markdown("""
-    <div style="text-align: center; padding-top: 10px;">
-        <p style="color: black; font-size: 15px;">
-            🧬 <b>Developed by</b> Dr. Karthick Vasudevan<br>
-            <i>Institute of Bioinformatics</i><br>
-            📧 <a href="mailto:karthick@ibioinformatics.org" style="color: black; text-decoration: none;">
-                karthick@ibioinformatics.org
-            </a>
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+        st.subheader("📈 Total Coverage per Amplicon")
+        melted = df.melt(id_vars=["#rname"], 
+                         value_vars=[col for col in df.columns if col.startswith("numreads_")],
+                         var_name="Barcode", value_name="Read Count")
+        melted["Barcode"] = melted["Barcode"].str.replace("numreads_", "")
+        fig = px.bar(melted, x="#rname", y="Read Count", color="Barcode", barmode="group")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("🧯 Heatmap of Amplicon Coverage")
+        heatmap_data = df.set_index("#rname")
+        heatmap_data = heatmap_data[[col for col in heatmap_data.columns if col.startswith("numreads_")]]
+        fig2, ax = plt.subplots(figsize=(10, len(heatmap_data) * 0.4))
+        sns.heatmap(heatmap_data, annot=True, fmt="g", cmap="YlGnBu", ax=ax)
+        st.pyplot(fig2)
+
+        st.download_button("📥 Download Full Excel Report", st.session_state.output_data,
+                           file_name="final_coverage_report.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           use_container_width=True)
 
 def process_all_reads_with_progress(reference_file, fastq_files):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -116,11 +112,7 @@ def process_all_reads_with_progress(reference_file, fastq_files):
         completed = 0
 
         def notify(message):
-            status.markdown(f"""
-                <div style="background-color:#eeeeee;padding:10px;border-left:5px solid #000000;border-radius:5px;">
-                    <span style="color:black;font-weight:500;">{message}</span>
-                </div>
-            """, unsafe_allow_html=True)
+            status.markdown(f"<div style='background:#eeeeee;padding:10px;border-left:5px solid black;'>{message}</div>", unsafe_allow_html=True)
 
         def process_and_update(barcode_file):
             nonlocal completed
@@ -158,24 +150,20 @@ def align_reads(input_file, output_prefix, reference):
     bam_file = f"{output_prefix}.bam"
     sorted_bam = f"{output_prefix}_sorted.bam"
 
-    subprocess.run(
-        f"minimap2 -ax map-ont {reference} {input_file} | samtools view -b -F 2308 - > {bam_file}",
-        shell=True, check=True
-    )
+    subprocess.run(f"minimap2 -ax map-ont {reference} {input_file} | samtools view -b -F 2308 - > {bam_file}",
+                   shell=True, check=True)
     subprocess.run(f"samtools sort -m 1G -o {sorted_bam} {bam_file}", shell=True, check=True)
     subprocess.run(f"samtools index {sorted_bam}", shell=True, check=True)
     os.remove(bam_file)
     return sorted_bam
 
-# ✅ This uses the exact logic from your original script
 def calculate_summary_coverage(bam_file, output_prefix):
     coverage_tsv = f"{output_prefix}_coverage.tsv"
     coverage_csv = f"{output_prefix}_coverage.csv"
 
-    subprocess.run(f"samtools coverage {bam_file} > {coverage_tsv}", shell=True, check=True)
+    subprocess.run(f"LC_ALL=C samtools coverage {bam_file} > {coverage_tsv}", shell=True, check=True, executable="/bin/bash")
 
     combined_entries = {}
-
     with open(coverage_tsv, 'r') as infile:
         for line in infile:
             if line.startswith('#rname'):
@@ -183,17 +171,12 @@ def calculate_summary_coverage(bam_file, output_prefix):
             fields = line.strip().split('\t')
             if len(fields) < 4:
                 continue
-
             rname = fields[0]
-            try:
-                startpos = int(fields[1])
-                endpos = int(fields[2])
-                numreads = int(float(fields[3]))  # force int even if 38472.0
-            except:
-                continue
+            startpos = int(fields[1])
+            endpos = int(fields[2])
+            numreads = int(float(fields[3]))
 
             key = (startpos, endpos)
-
             if key in combined_entries:
                 combined_entries[key]['numreads'] += numreads
                 if not rname.endswith('_R'):
@@ -225,7 +208,6 @@ def merge_coverage_matrix(output_dir, final_output):
         df = pd.read_csv(os.path.join(output_dir, f))
         for _, row in df.iterrows():
             key = (row['#rname'], row['startpos'], row['endpos'])
-
             if key not in combined_entries:
                 combined_entries[key] = {
                     '#rname': row['#rname'],
@@ -238,7 +220,6 @@ def merge_coverage_matrix(output_dir, final_output):
 
     merged_df = pd.DataFrame.from_dict(combined_entries, orient='index').reset_index(drop=True)
     merged_df = merged_df.sort_values(by=['startpos'])
-
     column_order = ['#rname', 'startpos', 'endpos'] + [f'numreads_{b}' for b in all_barcodes]
     for col in column_order:
         if col not in merged_df.columns:
