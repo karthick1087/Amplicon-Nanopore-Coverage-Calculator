@@ -56,12 +56,17 @@ def main():
                 st.session_state.output_data = output_data
                 st.session_state.dataframe = df
                 st.session_state.processed = True
-                st.success("✅ Analysis completed!")
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
                 logging.error(f"Unexpected error: {str(e)}")
 
     if st.session_state.processed:
+        st.markdown("""
+        <div style="background-color:#d4edda;padding:10px;border-left:5px solid #28a745;border-radius:5px;">
+            <span style="color:black;font-weight:600;">✅ Analysis completed!</span>
+        </div>
+        """, unsafe_allow_html=True)
+
         st.subheader("📊 Coverage Summary Table")
         st.dataframe(st.session_state.dataframe.head(20), use_container_width=True)
 
@@ -93,13 +98,22 @@ def process_all_reads_with_progress(reference_file, fastq_files):
         barcode_files = [f for f in os.listdir(reads_dir) if f.endswith((".fastq", ".fastq.gz"))]
 
         progress = st.progress(0)
+        status = st.empty()
         total = len(barcode_files)
         completed = 0
+
+        def notify(message):
+            status.markdown(f"""
+                <div style="background-color:#eeeeee;padding:10px;border-left:5px solid #000000;border-radius:5px;">
+                    <span style="color:black;font-weight:500;">{message}</span>
+                </div>
+            """, unsafe_allow_html=True)
 
         def process_and_update(barcode_file):
             nonlocal completed
             try:
-                process_file(barcode_file, reads_dir, output_dir, ref_path)
+                notify(f"🧬 Processing `{barcode_file}`")
+                process_file(barcode_file, reads_dir, output_dir, ref_path, notify)
             finally:
                 completed += 1
                 progress.progress(completed / total)
@@ -107,19 +121,24 @@ def process_all_reads_with_progress(reference_file, fastq_files):
         for bf in barcode_files:
             process_and_update(bf)
 
+        notify("📊 Merging coverage results into final Excel report...")
         merged_df = merge_coverage_matrix(output_dir, final_output)
+        notify("✅ All processing completed.")
 
         with open(final_output, "rb") as f:
             output_data = f.read()
 
         return output_data, merged_df
 
-def process_file(barcode_file, reads_dir, output_dir, reference):
+def process_file(barcode_file, reads_dir, output_dir, reference, notify):
     barcode_path = os.path.join(reads_dir, barcode_file)
     barcode_name = os.path.splitext(os.path.splitext(barcode_file)[0])[0]
     output_prefix = os.path.join(output_dir, barcode_name)
 
+    notify(f"📌 Running minimap2 for `{barcode_file}`...")
     sorted_bam = align_reads(barcode_path, output_prefix, reference)
+
+    notify(f"🧪 Calculating coverage for `{barcode_file}`...")
     calculate_summary_coverage(sorted_bam, output_prefix)
 
 def align_reads(input_file, output_prefix, reference):
