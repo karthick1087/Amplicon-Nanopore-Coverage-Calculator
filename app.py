@@ -168,32 +168,51 @@ def align_reads(input_file, output_prefix, reference):
     os.remove(bam_file)
     return sorted_bam
 
+# ✅ This function now exactly mimics your original _R merging logic
 def calculate_summary_coverage(bam_file, output_prefix):
     coverage_tsv = f"{output_prefix}_coverage.tsv"
     coverage_csv = f"{output_prefix}_coverage.csv"
 
     subprocess.run(f"samtools coverage {bam_file} > {coverage_tsv}", shell=True, check=True)
 
-    with open(coverage_tsv, 'r') as f:
-        for line in f:
+    combined_entries = {}
+
+    with open(coverage_tsv, 'r') as infile:
+        for line in infile:
             if line.startswith('#rname'):
-                header = line.strip('#').strip().split('\t')
-                break
+                continue
+            fields = line.strip().split('\t')
+            if len(fields) < 4:
+                continue
 
-    df = pd.read_csv(coverage_tsv, sep='\t', comment='#', header=None)
-    df.columns = header if header else ['rname', 'startpos', 'endpos', 'numreads']
+            rname = fields[0]
+            startpos = fields[1]
+            endpos = fields[2]
+            numreads = int(fields[3])
+            key = (startpos, endpos)
 
-    if 'rname' in df.columns:
-        df.rename(columns={'rname': '#rname'}, inplace=True)
+            if key in combined_entries:
+                combined_entries[key]['numreads'] += numreads
+                if not rname.endswith('_R'):
+                    combined_entries[key]['rname'] = rname
+            else:
+                combined_entries[key] = {
+                    'rname': rname,
+                    'startpos': startpos,
+                    'endpos': endpos,
+                    'numreads': numreads
+                }
 
-    df = df[['#rname', 'startpos', 'endpos', 'numreads']]
-    df.to_csv(coverage_csv, index=False)
+    with open(coverage_csv, 'w') as outfile:
+        outfile.write('#rname,startpos,endpos,numreads\n')
+        for entry in combined_entries.values():
+            outfile.write(f"{entry['rname']},{entry['startpos']},{entry['endpos']},{entry['numreads']}\n")
+
     os.remove(coverage_tsv)
 
 def merge_coverage_matrix(output_dir, final_output):
     combined_entries = {}
     coverage_files = sorted([f for f in os.listdir(output_dir) if f.endswith("_coverage.csv")])
-
     all_barcodes = []
 
     for f in coverage_files:
@@ -201,9 +220,8 @@ def merge_coverage_matrix(output_dir, final_output):
         all_barcodes.append(barcode)
 
         df = pd.read_csv(os.path.join(output_dir, f))
-
         for _, row in df.iterrows():
-            key = (row['startpos'], row['endpos'])
+            key = (row['#rname'], row['startpos'], row['endpos'])
 
             if key not in combined_entries:
                 combined_entries[key] = {
@@ -213,20 +231,11 @@ def merge_coverage_matrix(output_dir, final_output):
                     f'numreads_{barcode}': row['numreads']
                 }
             else:
-                # Use non-_R rname if available
-                if not row['#rname'].endswith('_R'):
-                    combined_entries[key]['#rname'] = row['#rname']
+                combined_entries[key][f'numreads_{barcode}'] = row['numreads']
 
-                col = f'numreads_{barcode}'
-                if col not in combined_entries[key]:
-                    combined_entries[key][col] = row['numreads']
-                else:
-                    # Fix: do not sum duplicates — just keep the max (or first)
-                    combined_entries[key][col] = max(combined_entries[key][col], row['numreads'])
-
-    # Ensure consistent column order
     merged_df = pd.DataFrame.from_dict(combined_entries, orient='index').reset_index(drop=True)
     merged_df = merged_df.sort_values(by=['startpos'])
+
     column_order = ['#rname', 'startpos', 'endpos'] + [f'numreads_{b}' for b in all_barcodes]
     for col in column_order:
         if col not in merged_df.columns:
