@@ -78,6 +78,20 @@ def main():
             use_container_width=True
         )
 
+    # Acknowledgment footer
+    st.markdown("""<hr style="border: 1px solid black;">""", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="text-align: center; padding-top: 10px;">
+        <p style="color: black; font-size: 15px;">
+            🧬 <b>Developed by</b> Dr. Karthick Vasudevan<br>
+            <i>Institute of Bioinformatics</i><br>
+            📧 <a href="mailto:karthick@ibioinformatics.org" style="color: black; text-decoration: none;">
+                karthick@ibioinformatics.org
+            </a>
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
 def process_all_reads_with_progress(reference_file, fastq_files):
     with tempfile.TemporaryDirectory() as tmpdir:
         ref_path = os.path.join(tmpdir, "reference.fasta")
