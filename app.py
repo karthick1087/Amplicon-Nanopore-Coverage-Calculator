@@ -192,10 +192,14 @@ def calculate_summary_coverage(bam_file, output_prefix):
 
 def merge_coverage_matrix(output_dir, final_output):
     combined_entries = {}
-    coverage_files = [f for f in os.listdir(output_dir) if f.endswith("_coverage.csv")]
+    coverage_files = sorted([f for f in os.listdir(output_dir) if f.endswith("_coverage.csv")])
+
+    all_barcodes = []
 
     for f in coverage_files:
         barcode = os.path.splitext(f)[0].split('_')[0]
+        all_barcodes.append(barcode)
+
         df = pd.read_csv(os.path.join(output_dir, f))
 
         for _, row in df.iterrows():
@@ -209,19 +213,25 @@ def merge_coverage_matrix(output_dir, final_output):
                     f'numreads_{barcode}': row['numreads']
                 }
             else:
-                # Replace rname only if the new one is better (non-_R preferred)
+                # Use non-_R rname if available
                 if not row['#rname'].endswith('_R'):
                     combined_entries[key]['#rname'] = row['#rname']
 
-                # Sum numreads for the same barcode if already exists
-                col_name = f'numreads_{barcode}'
-                if col_name in combined_entries[key]:
-                    combined_entries[key][col_name] += row['numreads']
+                col = f'numreads_{barcode}'
+                if col not in combined_entries[key]:
+                    combined_entries[key][col] = row['numreads']
                 else:
-                    combined_entries[key][col_name] = row['numreads']
+                    # Fix: do not sum duplicates — just keep the max (or first)
+                    combined_entries[key][col] = max(combined_entries[key][col], row['numreads'])
 
+    # Ensure consistent column order
     merged_df = pd.DataFrame.from_dict(combined_entries, orient='index').reset_index(drop=True)
     merged_df = merged_df.sort_values(by=['startpos'])
+    column_order = ['#rname', 'startpos', 'endpos'] + [f'numreads_{b}' for b in all_barcodes]
+    for col in column_order:
+        if col not in merged_df.columns:
+            merged_df[col] = 0
+    merged_df = merged_df[column_order]
     merged_df.to_excel(final_output, index=False)
     return merged_df
 
