@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 
 logging.basicConfig(level=logging.INFO)
-st.set_page_config(page_title="Amplicon Coverage Analyzer", layout="wide")
+st.set_page_config(page_title="Nanopore Amplicon Coverage Analyzer", layout="wide")
 
 # Style
 st.markdown("""
