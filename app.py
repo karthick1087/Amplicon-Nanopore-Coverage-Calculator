@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO)
 
 st.markdown("""
 <style>
-    .stApp { background-color: #ffffff; }
+    .stApp { background-color: #607cbd; }
     .stMarkdown h1, .stMarkdown h4, .stMarkdown p, .stMarkdown span { color: #000000 !important; }
     .stFileUploader section { border: 2px dashed #000000; }
     .stButton button { background-color: #000000 !important; color: white !important; }
