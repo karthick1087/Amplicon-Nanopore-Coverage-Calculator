@@ -9,9 +9,9 @@ import seaborn as sns
 import plotly.express as px
 
 logging.basicConfig(level=logging.INFO)
-
 st.set_page_config(page_title="Amplicon Coverage Analyzer", layout="wide")
 
+# UI Styling
 st.markdown("""
 <style>
     .stApp { background-color: #607cbd; }
@@ -57,6 +57,7 @@ def main():
         df = st.session_state.dataframe
         st.markdown("<h3>📊 Coverage Summary Table</h3>", unsafe_allow_html=True)
 
+        # Threshold filter
         threshold = st.slider("Minimum Read Count to Display", 0, 50000, 0, step=1000)
         filtered_df = df.copy()
         for col in filtered_df.columns:
@@ -68,6 +69,7 @@ def main():
         else:
             st.warning("⚠️ No data above selected threshold.")
 
+        # Bar Plot
         st.subheader("📈 Total Coverage per Amplicon")
         melted = df.melt(id_vars=["#rname"], 
                          value_vars=[col for col in df.columns if col.startswith("numreads_")],
@@ -76,6 +78,7 @@ def main():
         fig = px.bar(melted, x="#rname", y="Read Count", color="Barcode", barmode="group")
         st.plotly_chart(fig, use_container_width=True)
 
+        # Heatmap
         st.subheader("🧯 Heatmap of Amplicon Coverage")
         heatmap_data = df.set_index("#rname")
         heatmap_data = heatmap_data[[col for col in heatmap_data.columns if col.startswith("numreads_")]]
@@ -83,9 +86,25 @@ def main():
         sns.heatmap(heatmap_data, annot=True, fmt="g", cmap="YlGnBu", ax=ax)
         st.pyplot(fig2)
 
+        # Excel Download
         st.download_button("📥 Download Full Excel Report", st.session_state.output_data,
-                           file_name="final_coverage_report.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           file_name="final_coverage_report.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                            use_container_width=True)
+
+        # Acknowledgment
+        st.markdown("""<hr style="border: 1px solid black;">""", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="text-align: center; padding-top: 10px;">
+            <p style="color: black; font-size: 15px;">
+                🧬 <b>Developed by</b> Dr. Karthick Vasudevan<br>
+                <i>Institute of Bioinformatics</i><br>
+                📧 <a href="mailto:karthick@ibioinformatics.org" style="color: black; text-decoration: none;">
+                    karthick@ibioinformatics.org
+                </a>
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
 def process_all_reads_with_progress(reference_file, fastq_files):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -161,7 +180,8 @@ def calculate_summary_coverage(bam_file, output_prefix):
     coverage_tsv = f"{output_prefix}_coverage.tsv"
     coverage_csv = f"{output_prefix}_coverage.csv"
 
-    subprocess.run(f"LC_ALL=C samtools coverage {bam_file} > {coverage_tsv}", shell=True, check=True, executable="/bin/bash")
+    subprocess.run(f"LC_ALL=C samtools coverage {bam_file} > {coverage_tsv}",
+                   shell=True, check=True, executable="/bin/bash")
 
     combined_entries = {}
     with open(coverage_tsv, 'r') as infile:
