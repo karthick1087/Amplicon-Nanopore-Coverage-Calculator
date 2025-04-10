@@ -29,8 +29,8 @@ def main():
 
     with st.sidebar:
         st.header("⚙️ Settings")
-        reference_file = st.file_uploader("Upload Reference FASTA", type=['fasta', 'fa'])
-        fastq_files = st.file_uploader("Upload FASTQ Files", type=['fastq', 'fastq.gz'], accept_multiple_files=True)
+        reference_file = st.file_uploader("Upload Reference FASTA", type=("fasta", "fa"))
+        fastq_files = st.file_uploader("Upload FASTQ Files", type=("fastq", "gz"), accept_multiple_files=True)
         process_btn = st.button("🚀 Start Analysis", use_container_width=True)
 
     if process_btn:
@@ -40,13 +40,18 @@ def main():
         if not fastq_files:
             st.error("❌ Please upload at least one FASTQ file.")
             return
-        if reference_file.name.strip() == "":
-            st.error("❌ Uploaded reference file has no name.")
-            return
-        for fq in fastq_files:
-            if fq.name.strip() == "":
-                st.error("❌ One of the FASTQ files has no valid name.")
+
+        try:
+            if not reference_file.name.lower().endswith((".fasta", ".fa")):
+                st.error("❌ Reference file must be .fasta or .fa")
                 return
+            for fq in fastq_files:
+                if not fq.name.lower().endswith((".fastq", ".fastq.gz", ".gz")):
+                    st.error(f"❌ Invalid FASTQ file: {fq.name}")
+                    return
+        except AttributeError:
+            st.error("❌ File metadata error. Please re-upload files.")
+            st.stop()
 
         with st.spinner("🔬 Processing files..."):
             try:
@@ -148,14 +153,10 @@ def calculate_summary_coverage(bam_file, output_prefix):
     df = pd.read_csv(coverage_tsv, sep='\t', comment='#', header=None)
     df.columns = header if header else ['rname', 'startpos', 'endpos', 'numreads']
 
-    if all(col in df.columns for col in ['#rname', 'startpos', 'endpos', 'numreads']):
-        df = df[['#rname', 'startpos', 'endpos', 'numreads']]
-    elif all(col in df.columns for col in ['rname', 'startpos', 'endpos', 'numreads']):
+    if 'rname' in df.columns:
         df.rename(columns={'rname': '#rname'}, inplace=True)
-        df = df[['#rname', 'startpos', 'endpos', 'numreads']]
-    else:
-        raise ValueError("Expected coverage output columns not found.")
 
+    df = df[['#rname', 'startpos', 'endpos', 'numreads']]
     df.to_csv(coverage_csv, index=False)
     os.remove(coverage_tsv)
 
