@@ -2,7 +2,6 @@ import streamlit as st
 import os
 import subprocess
 import pandas as pd
-from multiprocessing import Pool
 import tempfile
 import logging
 
@@ -41,6 +40,13 @@ def main():
         if not fastq_files:
             st.error("❌ Please upload at least one FASTQ file.")
             return
+        if reference_file.name.strip() == "":
+            st.error("❌ Uploaded reference file has no name.")
+            return
+        for fq in fastq_files:
+            if fq.name.strip() == "":
+                st.error("❌ One of the FASTQ files has no valid name.")
+                return
 
         with st.spinner("🔬 Processing files..."):
             try:
@@ -84,7 +90,6 @@ def process_all_reads_with_progress(reference_file, fastq_files):
 
         barcode_files = [f for f in os.listdir(reads_dir) if f.endswith((".fastq", ".fastq.gz"))]
 
-        # Progress bar setup
         progress = st.progress(0)
         total = len(barcode_files)
         completed = 0
@@ -100,7 +105,6 @@ def process_all_reads_with_progress(reference_file, fastq_files):
         for bf in barcode_files:
             process_and_update(bf)
 
-        # Merge results
         merged_df = merge_coverage_matrix(output_dir, final_output)
 
         with open(final_output, "rb") as f:
@@ -184,4 +188,3 @@ def merge_coverage_matrix(output_dir, final_output):
 
 if __name__ == "__main__":
     main()
-
