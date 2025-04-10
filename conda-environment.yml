@@ -1,0 +1,14 @@
+name: coverage-analyzer
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.9
+  - pip
+  - pip:
+    - streamlit==1.33.0
+    - pandas==2.2.2
+    - openpyxl==3.1.2
+    - numpy==1.24.3
+  - bioconda::minimap2=2.26
+  - bioconda::samtools=1.18
