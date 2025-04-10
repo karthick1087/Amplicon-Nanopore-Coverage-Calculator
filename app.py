@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import subprocess
 import pandas as pd
+import tempfile
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -91,56 +92,56 @@ def main():
     """, unsafe_allow_html=True)
 
 def process_all_reads_with_progress(reference_file, fastq_files):
-    output_dir = "streamlit_output_test"
-    os.makedirs(output_dir, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ref_path = os.path.join(tmpdir, "reference.fasta")
+        with open(ref_path, "wb") as f:
+            f.write(reference_file.getbuffer())
 
-    ref_path = os.path.join(output_dir, "reference.fasta")
-    with open(ref_path, "wb") as f:
-        f.write(reference_file.getbuffer())
+        reads_dir = os.path.join(tmpdir, "reads")
+        os.makedirs(reads_dir, exist_ok=True)
+        for fq in fastq_files:
+            fq_path = os.path.join(reads_dir, fq.name)
+            with open(fq_path, "wb") as f:
+                f.write(fq.getbuffer())
 
-    reads_dir = os.path.join(output_dir, "reads")
-    os.makedirs(reads_dir, exist_ok=True)
+        output_dir = os.path.join(tmpdir, "results")
+        os.makedirs(output_dir, exist_ok=True)
+        final_output = os.path.join(output_dir, "final_coverage_report.xlsx")
 
-    for fq in fastq_files:
-        fq_path = os.path.join(reads_dir, fq.name)
-        with open(fq_path, "wb") as f:
-            f.write(fq.getbuffer())
+        barcode_files = [f for f in os.listdir(reads_dir) if f.endswith((".fastq", ".fastq.gz"))]
 
-    final_output = os.path.join(output_dir, "final_coverage_report.xlsx")
-    barcode_files = [f for f in os.listdir(reads_dir) if f.endswith((".fastq", ".fastq.gz"))]
+        progress = st.progress(0)
+        status = st.empty()
+        total = len(barcode_files)
+        completed = 0
 
-    progress = st.progress(0)
-    status = st.empty()
-    total = len(barcode_files)
-    completed = 0
+        def notify(message):
+            status.markdown(f"""
+                <div style="background-color:#eeeeee;padding:10px;border-left:5px solid #000000;border-radius:5px;">
+                    <span style="color:black;font-weight:500;">{message}</span>
+                </div>
+            """, unsafe_allow_html=True)
 
-    def notify(message):
-        status.markdown(f"""
-            <div style="background-color:#eeeeee;padding:10px;border-left:5px solid #000000;border-radius:5px;">
-                <span style="color:black;font-weight:500;">{message}</span>
-            </div>
-        """, unsafe_allow_html=True)
+        def process_and_update(barcode_file):
+            nonlocal completed
+            try:
+                notify(f"🧬 Processing `{barcode_file}`")
+                process_file(barcode_file, reads_dir, output_dir, ref_path, notify)
+            finally:
+                completed += 1
+                progress.progress(completed / total)
 
-    def process_and_update(barcode_file):
-        nonlocal completed
-        try:
-            notify(f"🧬 Processing `{barcode_file}`")
-            process_file(barcode_file, reads_dir, output_dir, ref_path, notify)
-        finally:
-            completed += 1
-            progress.progress(completed / total)
+        for bf in barcode_files:
+            process_and_update(bf)
 
-    for bf in barcode_files:
-        process_and_update(bf)
+        notify("📊 Merging coverage results into final Excel report...")
+        merged_df = merge_coverage_matrix(output_dir, final_output)
+        notify("✅ All processing completed.")
 
-    notify("📊 Merging coverage results into final Excel report...")
-    merged_df = merge_coverage_matrix(output_dir, final_output)
-    notify("✅ All processing completed.")
+        with open(final_output, "rb") as f:
+            output_data = f.read()
 
-    with open(final_output, "rb") as f:
-        output_data = f.read()
-
-    return output_data, merged_df
+        return output_data, merged_df
 
 def process_file(barcode_file, reads_dir, output_dir, reference, notify):
     barcode_path = os.path.join(reads_dir, barcode_file)
@@ -157,18 +158,21 @@ def align_reads(input_file, output_prefix, reference):
     bam_file = f"{output_prefix}.bam"
     sorted_bam = f"{output_prefix}_sorted.bam"
 
-    subprocess.run(["minimap2", "-ax", "map-ont", reference, input_file], stdout=open(bam_file, "wb"), check=True)
-    subprocess.run(["samtools", "sort", "-m", "1G", "-o", sorted_bam, bam_file], check=True)
-    subprocess.run(["samtools", "index", sorted_bam], check=True)
+    subprocess.run(
+        f"minimap2 -ax map-ont {reference} {input_file} | samtools view -b -F 2308 - > {bam_file}",
+        shell=True, check=True
+    )
+    subprocess.run(f"samtools sort -m 1G -o {sorted_bam} {bam_file}", shell=True, check=True)
+    subprocess.run(f"samtools index {sorted_bam}", shell=True, check=True)
     os.remove(bam_file)
     return sorted_bam
 
+# ✅ This uses the exact logic from your original script
 def calculate_summary_coverage(bam_file, output_prefix):
     coverage_tsv = f"{output_prefix}_coverage.tsv"
     coverage_csv = f"{output_prefix}_coverage.csv"
 
-    with open(coverage_tsv, "w") as outfile:
-        subprocess.run(["bash", "-c", f"LC_ALL=C samtools coverage {bam_file}"], stdout=outfile, check=True)
+    subprocess.run(f"samtools coverage {bam_file} > {coverage_tsv}", shell=True, check=True)
 
     combined_entries = {}
 
@@ -184,7 +188,7 @@ def calculate_summary_coverage(bam_file, output_prefix):
             try:
                 startpos = int(fields[1])
                 endpos = int(fields[2])
-                numreads = int(float(fields[3]))
+                numreads = int(float(fields[3]))  # force int even if 38472.0
             except:
                 continue
 
@@ -221,6 +225,7 @@ def merge_coverage_matrix(output_dir, final_output):
         df = pd.read_csv(os.path.join(output_dir, f))
         for _, row in df.iterrows():
             key = (row['#rname'], row['startpos'], row['endpos'])
+
             if key not in combined_entries:
                 combined_entries[key] = {
                     '#rname': row['#rname'],
