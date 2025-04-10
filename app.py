@@ -20,11 +20,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ✅ Acknowledgment block with logo on the right
-st.markdown("""
-<div style="display: flex; justify-content: space-between; align-items: center; background-color: #e6f2ff; padding: 10px; border-radius: 8px; margin-bottom: 20px;">
-    <div>
-        <p style="color: black; font-size: 15px; margin: 0;">
+def main():
+    st.markdown("<h1>Nanopore Amplicon Coverage Analyzer</h1>", unsafe_allow_html=True)
+    st.markdown("<h4>Upload FASTQ files and a reference FASTA to compute amplicon coverage.</h4>", unsafe_allow_html=True)
+
+    # Acknowledgment at the top
+    st.markdown("""
+    <div style="text-align: center; padding: 10px; margin-bottom: 20px;">
+        <p style="color: black; font-size: 15px;">
             🧬 <b>Developed by</b> Dr. Karthick Vasudevan<br>
             <i>Institute of Bioinformatics</i><br>
             📧 <a href="mailto:karthick@ibioinformatics.org" style="color: black; text-decoration: none;">
@@ -32,15 +35,7 @@ st.markdown("""
             </a>
         </p>
     </div>
-    <div>
-        <img src="logo.jpeg" alt="Logo" width="120" style="border-radius: 5px;">
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-def main():
-    st.markdown("<h1>Amplicon Coverage Analyzer</h1>", unsafe_allow_html=True)
-    st.markdown("<h4>Upload FASTQ files and a reference FASTA to compute amplicon coverage.</h4>", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
     if 'processed' not in st.session_state:
         st.session_state.processed = False
@@ -74,6 +69,7 @@ def main():
         df = st.session_state.dataframe
         st.markdown("<h3>📊 Coverage Summary Table</h3>", unsafe_allow_html=True)
 
+        # Filter based on threshold
         threshold = st.slider("Minimum Read Count to Display", 0, 50000, 0, step=1000)
         filtered_df = df.copy()
         for col in filtered_df.columns:
@@ -85,6 +81,7 @@ def main():
         else:
             st.warning("⚠️ No data above selected threshold.")
 
+        # Bar plot
         st.subheader("📈 Total Coverage per Amplicon")
         melted = df.melt(id_vars=["#rname"], 
                          value_vars=[col for col in df.columns if col.startswith("numreads_")],
