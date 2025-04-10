@@ -83,15 +83,15 @@ def main():
             st.warning("⚠️ No data above selected threshold.")
 
         st.subheader("📈 Total Coverage per Amplicon")
-        melted = df.melt(id_vars=["#gene"], 
+        melted = df.melt(id_vars=["#rname"], 
                          value_vars=[col for col in df.columns if col.startswith("numreads_")],
                          var_name="Barcode", value_name="Read Count")
         melted["Barcode"] = melted["Barcode"].str.replace("numreads_", "")
-        fig = px.bar(melted, x="#gene", y="Read Count", color="Barcode", barmode="group")
+        fig = px.bar(melted, x="#rname", y="Read Count", color="Barcode", barmode="group")
         st.plotly_chart(fig, use_container_width=True)
 
         st.subheader("🧯 Heatmap of Amplicon Coverage")
-        heatmap_data = df.set_index("#gene")
+        heatmap_data = df.set_index("#rname")
         heatmap_data = heatmap_data[[col for col in heatmap_data.columns if col.startswith("numreads_")]]
         fig2, ax = plt.subplots(figsize=(10, len(heatmap_data) * 0.4))
         sns.heatmap(heatmap_data, annot=True, fmt="g", cmap="YlGnBu", ax=ax)
@@ -174,29 +174,29 @@ def calculate_summary_coverage(bam_file, output_prefix):
     combined_entries = {}
     with open(coverage_tsv, 'r') as infile:
         for line in infile:
-            if line.startswith('#gene'): continue
+            if line.startswith('#rname'): continue
             fields = line.strip().split('\t')
             if len(fields) < 4: continue
-            gene = fields[0]
+            rname = fields[0]
             startpos = int(fields[1])
             endpos = int(fields[2])
             numreads = int(float(fields[3]))
             key = (startpos, endpos)
             if key in combined_entries:
                 combined_entries[key]['numreads'] += numreads
-                if not gene.endswith('_R'):
-                    combined_entries[key]['gene'] = gene
+                if not rname.endswith('_R'):
+                    combined_entries[key]['rname'] = rname
             else:
                 combined_entries[key] = {
-                    'gene': gene,
+                    'rname': rname,
                     'startpos': startpos,
                     'endpos': endpos,
                     'numreads': numreads
                 }
     with open(coverage_csv, 'w') as outfile:
-        outfile.write('#gene,startpos,endpos,numreads\n')
+        outfile.write('#rname,startpos,endpos,numreads\n')
         for entry in combined_entries.values():
-            outfile.write(f"{entry['gene']},{entry['startpos']},{entry['endpos']},{entry['numreads']}\n")
+            outfile.write(f"{entry['rname']},{entry['startpos']},{entry['endpos']},{entry['numreads']}\n")
     os.remove(coverage_tsv)
 
 def merge_coverage_matrix(output_dir, final_output):
@@ -208,15 +208,15 @@ def merge_coverage_matrix(output_dir, final_output):
         all_barcodes.append(barcode)
         df = pd.read_csv(os.path.join(output_dir, f))
         for _, row in df.iterrows():
-            key = (row['#gene'], row['startpos'], row['endpos'])
+            key = (row['#rname'], row['startpos'], row['endpos'])
             if key not in combined_entries:
-                combined_entries[key] = {'#gene': row['#gene'], 'startpos': row['startpos'], 'endpos': row['endpos'],
+                combined_entries[key] = {'#rname': row['#rname'], 'startpos': row['startpos'], 'endpos': row['endpos'],
                                          f'numreads_{barcode}': row['numreads']}
             else:
                 combined_entries[key][f'numreads_{barcode}'] = row['numreads']
     merged_df = pd.DataFrame.from_dict(combined_entries, orient='index').reset_index(drop=True)
     merged_df = merged_df.sort_values(by=['startpos'])
-    column_order = ['#gene', 'startpos', 'endpos'] + [f'numreads_{b}' for b in all_barcodes]
+    column_order = ['#rname', 'startpos', 'endpos'] + [f'numreads_{b}' for b in all_barcodes]
     for col in column_order:
         if col not in merged_df.columns:
             merged_df[col] = 0
