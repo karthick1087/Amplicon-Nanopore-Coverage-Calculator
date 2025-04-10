@@ -78,7 +78,6 @@ def main():
             use_container_width=True
         )
 
-    # Acknowledgment footer
     st.markdown("""<hr style="border: 1px solid black;">""", unsafe_allow_html=True)
     st.markdown("""
     <div style="text-align: center; padding-top: 10px;">
@@ -168,7 +167,7 @@ def align_reads(input_file, output_prefix, reference):
     os.remove(bam_file)
     return sorted_bam
 
-# ✅ This function now exactly mimics your original _R merging logic
+# ✅ This uses the exact logic from your original script
 def calculate_summary_coverage(bam_file, output_prefix):
     coverage_tsv = f"{output_prefix}_coverage.tsv"
     coverage_csv = f"{output_prefix}_coverage.csv"
@@ -186,9 +185,13 @@ def calculate_summary_coverage(bam_file, output_prefix):
                 continue
 
             rname = fields[0]
-            startpos = fields[1]
-            endpos = fields[2]
-            numreads = int(fields[3])
+            try:
+                startpos = int(fields[1])
+                endpos = int(fields[2])
+                numreads = int(float(fields[3]))  # force int even if 38472.0
+            except:
+                continue
+
             key = (startpos, endpos)
 
             if key in combined_entries:
@@ -203,46 +206,4 @@ def calculate_summary_coverage(bam_file, output_prefix):
                     'numreads': numreads
                 }
 
-    with open(coverage_csv, 'w') as outfile:
-        outfile.write('#rname,startpos,endpos,numreads\n')
-        for entry in combined_entries.values():
-            outfile.write(f"{entry['rname']},{entry['startpos']},{entry['endpos']},{entry['numreads']}\n")
-
-    os.remove(coverage_tsv)
-
-def merge_coverage_matrix(output_dir, final_output):
-    combined_entries = {}
-    coverage_files = sorted([f for f in os.listdir(output_dir) if f.endswith("_coverage.csv")])
-    all_barcodes = []
-
-    for f in coverage_files:
-        barcode = os.path.splitext(f)[0].split('_')[0]
-        all_barcodes.append(barcode)
-
-        df = pd.read_csv(os.path.join(output_dir, f))
-        for _, row in df.iterrows():
-            key = (row['#rname'], row['startpos'], row['endpos'])
-
-            if key not in combined_entries:
-                combined_entries[key] = {
-                    '#rname': row['#rname'],
-                    'startpos': row['startpos'],
-                    'endpos': row['endpos'],
-                    f'numreads_{barcode}': row['numreads']
-                }
-            else:
-                combined_entries[key][f'numreads_{barcode}'] = row['numreads']
-
-    merged_df = pd.DataFrame.from_dict(combined_entries, orient='index').reset_index(drop=True)
-    merged_df = merged_df.sort_values(by=['startpos'])
-
-    column_order = ['#rname', 'startpos', 'endpos'] + [f'numreads_{b}' for b in all_barcodes]
-    for col in column_order:
-        if col not in merged_df.columns:
-            merged_df[col] = 0
-    merged_df = merged_df[column_order]
-    merged_df.to_excel(final_output, index=False)
-    return merged_df
-
-if __name__ == "__main__":
-    main()
+    with open(coverage_csv, '_
