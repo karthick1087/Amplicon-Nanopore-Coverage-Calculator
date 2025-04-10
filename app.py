@@ -200,6 +200,7 @@ def merge_coverage_matrix(output_dir, final_output):
 
         for _, row in df.iterrows():
             key = (row['startpos'], row['endpos'])
+
             if key not in combined_entries:
                 combined_entries[key] = {
                     '#rname': row['#rname'],
@@ -208,10 +209,16 @@ def merge_coverage_matrix(output_dir, final_output):
                     f'numreads_{barcode}': row['numreads']
                 }
             else:
-                # Prefer non-_R rname if available
+                # Replace rname only if the new one is better (non-_R preferred)
                 if not row['#rname'].endswith('_R'):
                     combined_entries[key]['#rname'] = row['#rname']
-                combined_entries[key][f'numreads_{barcode}'] = row['numreads']
+
+                # Sum numreads for the same barcode if already exists
+                col_name = f'numreads_{barcode}'
+                if col_name in combined_entries[key]:
+                    combined_entries[key][col_name] += row['numreads']
+                else:
+                    combined_entries[key][col_name] = row['numreads']
 
     merged_df = pd.DataFrame.from_dict(combined_entries, orient='index').reset_index(drop=True)
     merged_df = merged_df.sort_values(by=['startpos'])
