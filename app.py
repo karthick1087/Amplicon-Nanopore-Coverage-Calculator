@@ -4,6 +4,7 @@ import subprocess
 import pandas as pd
 import tempfile
 import logging
+import zipfile
 import matplotlib.pyplot as plt
 import plotly.express as px
 
@@ -21,7 +22,7 @@ st.markdown("""
 
 def main():
     st.markdown("<h1>Nanopore Amplicon Coverage Analyzer</h1>", unsafe_allow_html=True)
-    st.markdown("<h4>Upload FASTQ files and a reference FASTA to compute amplicon coverage.</h4>", unsafe_allow_html=True)
+    st.markdown("<h4>Upload barcode folders (as ZIPs) and a reference FASTA to compute amplicon coverage.</h4>", unsafe_allow_html=True)
 
     st.markdown("""
     <div style="text-align: center; padding: 10px; margin-bottom: 20px;">
@@ -45,33 +46,17 @@ def main():
     with st.sidebar:
         st.header("⚙️ Settings")
         reference_file = st.file_uploader("Upload Reference FASTA", type=("fasta", "fa"))
-
-        input_mode = st.radio("Select Input Mode", [
-            "Upload single .fastq.gz per barcode",
-            "Upload multiple .fastq.gz per barcode (folder-like)"
-        ])
-
-        if input_mode == "Upload single .fastq.gz per barcode":
-            fastq_files = st.file_uploader("Upload FASTQ.GZ files (one per barcode)", type="gz", accept_multiple_files=True)
-            folder_fastq_files = None
-        else:
-            folder_fastq_files = st.file_uploader("Upload all FASTQ.GZ files (multiple per barcode)", type="gz", accept_multiple_files=True)
-            fastq_files = None
-
+        zip_files = st.file_uploader("Upload ZIP files (1 per barcode folder)", type="zip", accept_multiple_files=True)
         process_btn = st.button("🚀 Start Analysis", use_container_width=True)
 
     if process_btn:
-        if not reference_file or (not fastq_files and not folder_fastq_files):
-            st.error("❌ Please upload reference and FASTQ files.")
+        if not reference_file or not zip_files:
+            st.error("❌ Please upload reference and ZIP files.")
             return
 
-        with st.spinner("🔬 Processing files..."):
+        with st.spinner("🔬 Processing..."):
             try:
-                output_data, df = process_all_reads_with_progress(
-                    reference_file,
-                    fastq_files=fastq_files,
-                    folder_fastq_files=folder_fastq_files
-                )
+                output_data, df = process_zip_folders(reference_file, zip_files)
                 st.session_state.output_data = output_data
                 st.session_state.dataframe = df
                 st.session_state.processed = True
@@ -107,7 +92,7 @@ def main():
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                            use_container_width=True)
 
-def process_all_reads_with_progress(reference_file, fastq_files=None, folder_fastq_files=None):
+def process_zip_folders(reference_file, zip_files):
     with tempfile.TemporaryDirectory() as tmpdir:
         ref_path = os.path.join(tmpdir, "reference.fasta")
         with open(ref_path, "wb") as f:
@@ -116,30 +101,22 @@ def process_all_reads_with_progress(reference_file, fastq_files=None, folder_fas
         reads_dir = os.path.join(tmpdir, "reads")
         os.makedirs(reads_dir, exist_ok=True)
 
-        if fastq_files:
-            # Directly save each .fastq.gz file
-            for fq in fastq_files:
-                fq_path = os.path.join(reads_dir, fq.name)
-                with open(fq_path, "wb") as f:
-                    f.write(fq.getbuffer())
+        # Extract each ZIP = one barcode folder
+        for zip_file in zip_files:
+            barcode = os.path.splitext(zip_file.name)[0]
+            barcode_dir = os.path.join(reads_dir, barcode)
+            os.makedirs(barcode_dir, exist_ok=True)
+            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+                zip_ref.extractall(barcode_dir)
 
-        elif folder_fastq_files:
-            # Save and group by barcode (prefix before underscore)
-            barcode_groups = {}
-            for fq in folder_fastq_files:
-                fq_path = os.path.join(reads_dir, fq.name)
-                with open(fq_path, "wb") as f:
-                    f.write(fq.getbuffer())
-                barcode = fq.name.split("_")[0]
-                barcode_groups.setdefault(barcode, []).append(fq_path)
-
-            # Concatenate each group into barcode.fastq.gz
-            for barcode, file_list in barcode_groups.items():
-                output_fq = os.path.join(reads_dir, f"{barcode}.fastq.gz")
-                with open(output_fq, "wb") as out_f:
-                    for fq in sorted(file_list):
-                        with open(fq, "rb") as in_f:
-                            out_f.write(in_f.read())
+            # Concatenate all fastq.gz inside barcode_dir → barcode.fastq.gz
+            output_fq = os.path.join(reads_dir, f"{barcode}.fastq.gz")
+            with open(output_fq, "wb") as out_f:
+                for root, _, files in os.walk(barcode_dir):
+                    for f in sorted(files):
+                        if f.endswith(".fastq.gz"):
+                            with open(os.path.join(root, f), "rb") as in_f:
+                                out_f.write(in_f.read())
 
         output_dir = os.path.join(tmpdir, "results")
         os.makedirs(output_dir, exist_ok=True)
