@@ -6,10 +6,12 @@ import tempfile
 import zipfile
 import logging
 import plotly.express as px
+import re
 
 logging.basicConfig(level=logging.INFO)
 st.set_page_config(page_title="Amplicon Coverage Analyzer", layout="wide")
 
+# App styling
 st.markdown("""
 <style>
     .stApp { background-color: #607cbd; }
@@ -19,10 +21,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def sanitize(text):
+    """Remove emojis and surrogate characters from rname"""
+    return re.sub(r'[^\w\-.]', '_', text)
+
 def main():
     st.markdown("<h1>Nanopore Amplicon Coverage Analyzer</h1>", unsafe_allow_html=True)
-    st.markdown("<h4>Upload .fastq.gz files or zipped barcode folders with a reference FASTA.</h4>", unsafe_allow_html=True)
+    st.markdown("<h4>Upload FASTQ files or zipped barcode folders and a reference FASTA.</h4>", unsafe_allow_html=True)
 
+    # Acknowledgment
     st.markdown("""
     <div style="text-align: center; padding: 10px; margin-bottom: 20px;">
         <p style="color: black; font-size: 15px;">
@@ -37,8 +44,8 @@ def main():
 
     reference_file = st.file_uploader("🧬 Upload Reference FASTA", type=("fasta", "fa"))
     input_mode = st.radio("Select Input Type", ["Upload .fastq.gz files directly", "Upload zipped barcode folders (.zip)"])
-
     fastq_files = zip_files = None
+
     if input_mode == "Upload .fastq.gz files directly":
         fastq_files = st.file_uploader("📁 Upload FASTQ.GZ Files (1 per barcode)", type="gz", accept_multiple_files=True)
     else:
@@ -46,22 +53,22 @@ def main():
 
     if st.button("🚀 Start Analysis"):
         if not reference_file or (not fastq_files and not zip_files):
-            st.error("\u274c Please upload both reference and input files.")
+            st.error("❌ Please upload reference and input files.")
             return
 
-        with st.spinner("\ud83d\udd2c Processing..."):
+        with st.spinner("🔬 Processing..."):
             try:
                 output_data, df = process_inputs(reference_file, fastq_files, zip_files)
                 st.session_state.output_data = output_data
                 st.session_state.dataframe = df
                 st.session_state.processed = True
             except Exception as e:
-                st.error(f"\u274c Error: {str(e)}")
+                st.error(f"❌ Error: {str(e)}")
                 logging.error(str(e))
 
     if st.session_state.get("processed"):
         df = st.session_state.dataframe
-        st.markdown("<h3>\ud83d\udcca Coverage Summary Table</h3>", unsafe_allow_html=True)
+        st.markdown("<h3>📊 Coverage Summary Table</h3>", unsafe_allow_html=True)
 
         threshold = st.slider("Minimum Read Count to Display", 0, 50000, 0, step=1000)
         filtered_df = df.copy()
@@ -72,9 +79,9 @@ def main():
         if not filtered_df.empty:
             st.dataframe(filtered_df, use_container_width=True)
         else:
-            st.warning("\u26a0\ufe0f No data above selected threshold.")
+            st.warning("⚠️ No data above selected threshold.")
 
-        st.subheader("\ud83d\udcc8 Coverage Plot")
+        st.subheader("📈 Coverage Plot")
         melted = df.melt(id_vars=["#rname"],
                          value_vars=[col for col in df.columns if col.startswith("numreads_")],
                          var_name="Barcode", value_name="Read Count")
@@ -82,7 +89,7 @@ def main():
         fig = px.bar(melted, x="#rname", y="Read Count", color="Barcode", barmode="group")
         st.plotly_chart(fig, use_container_width=True)
 
-        st.download_button("\ud83d\udcc5 Download Excel Report", st.session_state.output_data,
+        st.download_button("📥 Download Excel Report", st.session_state.output_data,
                            file_name="coverage_report.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -95,11 +102,13 @@ def process_inputs(reference_file, fastq_files, zip_files):
         reads_dir = os.path.join(tmpdir, "reads")
         os.makedirs(reads_dir, exist_ok=True)
 
+        # Option A
         if fastq_files:
             for fq in fastq_files:
                 with open(os.path.join(reads_dir, fq.name), "wb") as f:
                     f.write(fq.getbuffer())
 
+        # Option B
         if zip_files:
             for zip_file in zip_files:
                 barcode = os.path.splitext(zip_file.name)[0]
@@ -132,7 +141,7 @@ def process_inputs(reference_file, fastq_files, zip_files):
             bam = f"{output_prefix}.bam"
             sorted_bam = f"{output_prefix}_sorted.bam"
 
-            status.info(f"\ud83d\udd17 Aligning: {fq_file}")
+            status.info(f"🔗 Aligning: {fq_file}")
             subprocess.run(f"minimap2 -ax map-ont {ref_path} {fq_path} | samtools view -b -F 2308 - > {bam}", shell=True, check=True)
             subprocess.run(f"samtools sort -m 1G -o {sorted_bam} {bam}", shell=True, check=True)
             subprocess.run(f"samtools index {sorted_bam}", shell=True, check=True)
@@ -152,12 +161,12 @@ def calculate_summary_coverage(bam_file, output_prefix):
     subprocess.run(f"LC_ALL=C samtools coverage {bam_file} > {coverage_tsv}", shell=True, check=True, executable="/bin/bash")
 
     combined_entries = {}
-    with open(coverage_tsv, 'r') as infile:
+    with open(coverage_tsv, 'r', encoding='utf-8', errors='ignore') as infile:
         for line in infile:
             if line.startswith('#rname'): continue
             fields = line.strip().split('\t')
             if len(fields) < 4: continue
-            rname = fields[0]
+            rname = sanitize(fields[0])
             startpos = int(fields[1])
             endpos = int(fields[2])
             numreads = int(float(fields[3]))
@@ -174,7 +183,7 @@ def calculate_summary_coverage(bam_file, output_prefix):
                     'numreads': numreads
                 }
 
-    with open(coverage_csv, 'w') as outfile:
+    with open(coverage_csv, 'w', encoding='utf-8') as outfile:
         outfile.write('#rname,startpos,endpos,numreads\n')
         for entry in combined_entries.values():
             outfile.write(f"{entry['rname']},{entry['startpos']},{entry['endpos']},{entry['numreads']}\n")
