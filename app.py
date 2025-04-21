@@ -10,7 +10,6 @@ import plotly.express as px
 logging.basicConfig(level=logging.INFO)
 st.set_page_config(page_title="Amplicon Coverage Analyzer", layout="wide")
 
-# Style
 st.markdown("""
 <style>
     .stApp { background-color: #607cbd; }
@@ -22,9 +21,8 @@ st.markdown("""
 
 def main():
     st.markdown("<h1>Nanopore Amplicon Coverage Analyzer</h1>", unsafe_allow_html=True)
-    st.markdown("<h4>Upload FASTQ files and a reference FASTA to compute amplicon coverage.</h4>", unsafe_allow_html=True)
+    st.markdown("<h4>Upload multiple FASTQ.GZ files grouped by barcode to analyze coverage.</h4>", unsafe_allow_html=True)
 
-    # Acknowledgment at the top
     st.markdown("""
     <div style="text-align: center; padding: 10px; margin-bottom: 20px;">
         <p style="color: black; font-size: 15px;">
@@ -47,7 +45,7 @@ def main():
     with st.sidebar:
         st.header("⚙️ Settings")
         reference_file = st.file_uploader("Upload Reference FASTA", type=("fasta", "fa"))
-        fastq_files = st.file_uploader("Upload FASTQ Files", type=("fastq", "gz"), accept_multiple_files=True)
+        fastq_files = st.file_uploader("Upload all FASTQ.GZ files (grouped by barcode)", type="gz", accept_multiple_files=True)
         process_btn = st.button("🚀 Start Analysis", use_container_width=True)
 
     if process_btn:
@@ -69,7 +67,6 @@ def main():
         df = st.session_state.dataframe
         st.markdown("<h3>📊 Coverage Summary Table</h3>", unsafe_allow_html=True)
 
-        # Filter based on threshold
         threshold = st.slider("Minimum Read Count to Display", 0, 50000, 0, step=1000)
         filtered_df = df.copy()
         for col in filtered_df.columns:
@@ -81,9 +78,8 @@ def main():
         else:
             st.warning("⚠️ No data above selected threshold.")
 
-        # Bar plot
         st.subheader("📈 Total Coverage per Amplicon")
-        melted = df.melt(id_vars=["#rname"], 
+        melted = df.melt(id_vars=["#rname"],
                          value_vars=[col for col in df.columns if col.startswith("numreads_")],
                          var_name="Barcode", value_name="Read Count")
         melted["Barcode"] = melted["Barcode"].str.replace("numreads_", "")
@@ -103,16 +99,29 @@ def process_all_reads_with_progress(reference_file, fastq_files):
 
         reads_dir = os.path.join(tmpdir, "reads")
         os.makedirs(reads_dir, exist_ok=True)
+
+        # Step 1: Save and group FASTQ.GZ files by barcode prefix
+        barcode_groups = {}
         for fq in fastq_files:
             fq_path = os.path.join(reads_dir, fq.name)
             with open(fq_path, "wb") as f:
                 f.write(fq.getbuffer())
+            barcode_name = fq.name.split("_")[0]
+            barcode_groups.setdefault(barcode_name, []).append(fq_path)
+
+        # Step 2: Concatenate files per barcode
+        for barcode, file_list in barcode_groups.items():
+            output_fq = os.path.join(reads_dir, f"{barcode}.fastq.gz")
+            with open(output_fq, "wb") as out_f:
+                for fq in sorted(file_list):
+                    with open(fq, "rb") as in_f:
+                        out_f.write(in_f.read())
 
         output_dir = os.path.join(tmpdir, "results")
         os.makedirs(output_dir, exist_ok=True)
         final_output = os.path.join(output_dir, "final_coverage_report.xlsx")
 
-        barcode_files = [f for f in os.listdir(reads_dir) if f.endswith((".fastq", ".fastq.gz"))]
+        barcode_files = [f for f in os.listdir(reads_dir) if f.endswith(".fastq.gz")]
 
         progress = st.progress(0)
         status = st.empty()
